@@ -399,6 +399,11 @@
                 overflow-x: auto;
             }
         }
+
+        @keyframes fadeIn {
+    from { opacity:0; transform:scale(0.95); }
+    to { opacity:1; transform:scale(1); }
+}
     </style>
 </head>
 <body>
@@ -648,6 +653,55 @@
         </div>
     </div>
 
+    <!-- Order Details Modal -->
+<div id="orderModal" style="
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.6);
+    z-index:9999;
+    align-items:center;
+    justify-content:center;
+">
+
+    <div style="
+        background:#fff;
+        width:90%;
+        max-width:700px;
+        border-radius:12px;
+        overflow:hidden;
+        box-shadow:0 20px 40px rgba(0,0,0,0.3);
+        animation:fadeIn 0.3s ease;
+    ">
+
+        <!-- Header -->
+        <div style="
+            background:#0a1a2d;
+            color:#c9a96e;
+            padding:16px 20px;
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+        ">
+            <h3 style="margin:0;">تفاصيل الطلب #<span id="modalOrderId"></span></h3>
+            <button onclick="closeOrderModal()" style="
+                background:none;
+                border:none;
+                color:#fff;
+                font-size:22px;
+                cursor:pointer;
+            ">×</button>
+        </div>
+
+        <!-- Content -->
+        <div id="orderDetailsContent" style="padding:20px;max-height:70vh;overflow:auto;">
+            <!-- يتم تعبئته بـ JavaScript -->
+        </div>
+
+    </div>
+</div>
+
+
     <script>
         // API Base URL
         const API_URL = window.location.origin + "/api";
@@ -780,6 +834,132 @@
                 console.error('Logout error:', error);
             }
         }
+
+        
+
+
+
+function openOrderDetails(orderId) {
+    const order = allOrders.find(o => o.id === orderId);
+    if (!order) return;
+
+    // رقم الطلب
+    document.getElementById('modalOrderId').textContent = order.id;
+
+    // بناء صفوف المنتجات
+    let productsHTML = '';
+    order.products.forEach(p => {
+        productsHTML += `
+            <tr>
+                <td style="padding:10px">${p.name}</td>
+                <td>${p.size || '-'}</td>
+                <td>${p.qty ?? p.quantity ?? 1}</td>
+                <td>$${p.price}</td>
+            </tr>
+        `;
+    });
+
+    // محتوى النافذة
+    document.getElementById('orderDetailsContent').innerHTML = `
+        <div style="margin-bottom:15px;line-height:1.8">
+            <strong>العميل:</strong> ${order.customer_name}<br>
+            <strong>الهاتف:</strong> ${order.customer_phone}<br>
+            <strong>العنوان:</strong> ${order.customer_address || '-'}
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;text-align:right">
+            <thead>
+                <tr style="background:#f5f5f5">
+                    <th style="padding:10px">المنتج</th>
+                    <th>الحجم</th>
+                    <th>الكمية</th>
+                    <th>السعر</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${productsHTML}
+            </tbody>
+        </table>
+
+        <hr>
+
+        <div style="margin:15px 0">
+            <label style="font-weight:bold">حالة الطلب:</label>
+            <select id="orderStatusSelect" style="
+                width:100%;
+                padding:10px;
+                margin-top:6px;
+                border-radius:8px;
+                border:1px solid #ccc;
+            ">
+                <option value="جديد">جديد</option>
+                <option value="قيد التجهيز">قيد التجهيز</option>
+                <option value="مكتمل">مكتمل</option>
+            </select>
+
+            <button onclick="saveOrderStatus(${order.id})"
+                style="
+                    margin-top:10px;
+                    width:100%;
+                    padding:10px;
+                    background:#0a1a2d;
+                    color:#c9a96e;
+                    border:none;
+                    border-radius:8px;
+                    cursor:pointer;
+                ">
+                حفظ الحالة
+            </button>
+        </div>
+
+        <hr>
+
+        <h3 style="text-align:center;color:#0a1a2d">
+            الإجمالي: $${order.total_price}
+        </h3>
+    `;
+
+    // ضبط الحالة الحالية
+    setTimeout(() => {
+        document.getElementById('orderStatusSelect').value = order.status;
+    }, 0);
+
+    // إظهار النافذة
+    document.getElementById('orderModal').style.display = 'flex';
+}
+
+
+async function saveOrderStatus(orderId) {
+    const newStatus = document.getElementById('orderStatusSelect').value;
+
+    try {
+        await fetch(`${API_URL}/orders/${orderId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: newStatus })
+        });
+
+        // تحديث الحالة محليًا
+        const order = allOrders.find(o => o.id === orderId);
+        if (order) order.status = newStatus;
+
+        displayOrders('all');
+        closeOrderModal();
+
+    } catch (err) {
+        alert('فشل تحديث حالة الطلب');
+    }
+}
+
+
+
+
+function closeOrderModal() {
+    document.getElementById('orderModal').style.display = 'none';
+}
+
 
         // إظهار شاشة الدخول
         function showLoginScreen() {
@@ -978,40 +1158,43 @@
             }
         }
 
-        // عرض الطلبات
-        function displayOrders(filterStatus) {
-            const tableBody = document.querySelector('#ordersTable tbody');
-            tableBody.innerHTML = '';
-            
-            const filteredOrders = filterStatus === 'all' 
-                ? allOrders 
-                : allOrders.filter(order => order.status === filterStatus);
-            
-            filteredOrders.forEach(order => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${order.id}</td>
-                    <td>${order.customer_name}</td>
-                    <td>${order.customer_phone}</td>
-                    <td>${order.customer_address || 'لا يوجد'}</td>
-                    <td>${order.products.length} منتج</td>
-                    <td>$${order.total_price}</td>
-                    <td><span class="status status-${order.status === 'جديد' ? 'new' : order.status === 'مكتمل' ? 'completed' : 'processing'}">${order.status}</span></td>
-                    <td>${new Date(order.created_at).toLocaleDateString('ar-SA')}</td>
-                    <td>
-                        <div class="actions">
-                            <button class="btn btn-primary btn-sm" onclick="viewOrderDetails(${order.id})"><i class="fas fa-eye"></i></button>
-                            <select class="form-control" style="width: auto; padding: 0.2rem;" onchange="updateOrderStatus(${order.id}, this.value)">
-                                <option value="جديد" ${order.status === 'جديد' ? 'selected' : ''}>جديد</option>
-                                <option value="قيد التجهيز" ${order.status === 'قيد التجهيز' ? 'selected' : ''}>قيد التجهيز</option>
-                                <option value="مكتمل" ${order.status === 'مكتمل' ? 'selected' : ''}>مكتمل</option>
-                            </select>
-                        </div>
-                    </td>
-                `;
-                tableBody.appendChild(row);
-            });
-        }
+        function displayOrders(status = 'all') {
+    const tbody = document.querySelector('#ordersTable tbody');
+    tbody.innerHTML = '';
+
+    let filteredOrders = allOrders;
+
+    if (status !== 'all') {
+        filteredOrders = allOrders.filter(o => o.status === status);
+    }
+
+    filteredOrders.forEach(order => {
+        const tr = document.createElement('tr');
+
+        tr.innerHTML = `
+            <td>${order.id}</td>
+            <td>${order.customer_name}</td>
+            <td>${order.customer_phone}</td>
+            <td>${order.customer_address || '-'}</td>
+            <td>${order.products.length} منتج</td>
+            <td>$${order.total_price}</td>
+            <td>
+                <span class="status status-new">${order.status}</span>
+            </td>
+            <td>${new Date(order.created_at).toLocaleDateString()}</td>
+            <td>
+                <button class="btn btn-secondary btn-sm"
+                        onclick="openOrderDetails(${order.id})"
+                        title="عرض تفاصيل الطلب">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </td>
+        `;
+
+        tbody.appendChild(tr);
+    });
+}
+
 
         // إضافة ميزة للمنتج
         function addFeature() {
@@ -1256,10 +1439,7 @@
             document.getElementById('orderModal').style.display = 'flex';
         }
 
-        // إغلاق نافذة تفاصيل الطلب
-        function closeOrderModal() {
-            document.getElementById('orderModal').style.display = 'none';
-        }
+        
 
         // تحديث حالة الطلب
         async function updateOrderStatus(orderId, newStatus) {
@@ -1320,5 +1500,4 @@
         }
     </script>
 </body>
-
 </html>
